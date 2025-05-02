@@ -1,0 +1,19 @@
+spring:
+  config:
+    activate:
+      on-profile: dev
+
+  datasource:
+    url: jdbc:mysql://localhost:3306/jobportal?serverTimezone=Asia/Seoul
+    username: root
+    password: kmh0824!
+
+  mail:
+    host: localhost
+    port: 1025
+    default-encoding: UTF-8
+
+  data:
+    redis:
+      host: localhost
+      port: 6379
