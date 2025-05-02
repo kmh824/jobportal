@@ -1,0 +1,26 @@
+spring:
+  config:
+    activate:
+      on-profile: prod
+
+  mail:
+    host: smtp.sendgrid.net
+    port: 587
+    username: ${MAIL_USER}
+    password: ${MAIL_PASS}
+    default-encoding: UTF-8
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+
+  data:
+    redis:
+      host: prod-redis-host
+      port: 6379
+
+cors:
+  allowed-origins:
+    - https://jobportal.my-domain.com

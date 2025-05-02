@@ -35,3 +35,7 @@ out/
 
 ### VS Code ###
 .vscode/
+
+# 모든 환경 설정 파일 중 dev, prod 프로파일 파일 무시
+src/main/resources/application-*.yaml
+!src/main/resources/application.yaml
