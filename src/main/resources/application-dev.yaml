@@ -17,3 +17,10 @@ spring:
     redis:
       host: localhost
       port: 6379
+
+  auth:
+    verification:
+      code-length: 6
+      expire-minutes: 5
+      block-hours: 24
+      max-attempts: 3
