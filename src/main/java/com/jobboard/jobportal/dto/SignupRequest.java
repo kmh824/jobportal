@@ -16,6 +16,10 @@ public class SignupRequest {
     @NotBlank(message = "이메일 인증이 필요합니다")
     private String email;
 
+    @NotBlank(message = "인증 코드는 필수입니다")
+    @Pattern(regexp = "\\d{6}", message = "6자리 숫자 코드를 입력하세요")
+    private String code;
+
     @NotBlank(message = "비밀번호는 필수입니다")
     @Pattern(
             // 길이 8~64, 대문자 1, 소문자 1, 숫자 1, 특수문자 1 이상

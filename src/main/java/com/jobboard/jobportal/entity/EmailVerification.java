@@ -40,4 +40,7 @@ public class EmailVerification {
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
+
+    public EmailVerification(String mail, String number, LocalDateTime localDateTime, int i, Object o) {
+    }
 }
