@@ -29,9 +29,8 @@ spring:
 
 # NOTE: JwtProperties가 prefix="jwt"를 바라보도록(권장) 코드도 맞춰주세요.
 jwt:
-  secret: ${JWT_SECRET}
-  access-expiration: 900000        # 15m
-  refresh-expiration: 604800000    # 7d
+  access-expiration: 900        # 15m
+  refresh-expiration: 604800    # 7d
 
 cors:
   allowed-origins:

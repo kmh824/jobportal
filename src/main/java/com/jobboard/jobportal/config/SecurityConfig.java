@@ -1,5 +1,7 @@
 package com.jobboard.jobportal.config;
 
+import com.jobboard.jobportal.security.JwtAuthenticationFilter;
+import com.jobboard.jobportal.security.JwtUtil;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -13,47 +15,41 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
 @Configuration
 @RequiredArgsConstructor
 @Profile({"prod", "stage", "test", "local"}) // 기본 로컬도 운영과 '동일 정책'으로 돌립니다.
 public class SecurityConfig {
 
+    // com.jobboard.jobportal.config.SecurityConfig (기존 파일 수정)
     @Bean
-    SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+    public SecurityFilterChain securityFilterChain(HttpSecurity http, JwtUtil jwtUtil) throws Exception {
         http
-                // CORS는 WebConfig에서 설정하고, 여기서는 '활성화'만 합니다(하드코딩 X).
-                .cors(Customizer.withDefaults())
+                .cors(c -> {}) // WebConfig 기반
                 .csrf(csrf -> csrf.disable())
-                // 무상태 (세션 사용하지 않음)
                 .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                .formLogin(form -> form.disable())
-                .httpBasic(basic -> basic.disable())
-                // 인가 설정
+                .formLogin(fl -> fl.disable())
+                .httpBasic(hb -> hb.disable())
                 .authorizeHttpRequests(auth -> auth
-                        // CORS preflight 허용
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-                        // 인증 없이 접근 가능한 인증 관련 엔드포인트 (POST만 여는 정책이면 아래처럼)
                         .requestMatchers(HttpMethod.POST, "/api/auth/**").permitAll()
-                        // (선택) 헬스체크 허용
                         .requestMatchers("/actuator/health").permitAll()
-                        // 나머지는 인증 필수
                         .anyRequest().authenticated()
-                );
+                )
+                .addFilterBefore(new JwtAuthenticationFilter(jwtUtil),
+                        UsernamePasswordAuthenticationFilter.class);
 
-        // JWT 필터는 2단계에서 추가: http.addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
         return http.build();
     }
 
-
+    // 이미 있는 경우 생략
     @Bean
-    PasswordEncoder passwordEncoder() {
-        return new BCryptPasswordEncoder();
-    }
-
-    // AuthenticationManager (로그인 단계에서 사용)
-    @Bean
-    AuthenticationManager authenticationManager(AuthenticationConfiguration configuration) throws Exception {
+    public AuthenticationManager authenticationManager(AuthenticationConfiguration configuration) throws Exception {
         return configuration.getAuthenticationManager();
     }
+
+    @Bean
+    public PasswordEncoder passwordEncoder() { return new BCryptPasswordEncoder(); }
+
 }
