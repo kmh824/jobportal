@@ -1,90 +1,109 @@
-// src/main/java/com/jobboard/jobportal/controller/AuthController.java
 package com.jobboard.jobportal.controller;
 
-import com.jobboard.jobportal.dto.EmailRequest;
-import com.jobboard.jobportal.dto.EmailVerifyRequest;
-import com.jobboard.jobportal.dto.SignupRequest;
-import com.jobboard.jobportal.dto.SignupResponse;
-import com.jobboard.jobportal.service.AuthService;
-import com.jobboard.jobportal.service.EmailVerificationService;
-import com.jobboard.jobportal.service.TokenBlacklistService;
-import com.jobboard.jobportal.config.JwtProperties;
-import jakarta.servlet.http.Cookie;
-import jakarta.validation.Valid;
+import com.jobboard.jobportal.repository.UserRepository;
+import com.jobboard.jobportal.security.JwtUtil;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.ResponseCookie;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.CookieValue;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.web.bind.annotation.*;
 
-import java.net.URI;
+import jakarta.servlet.http.HttpServletResponse;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.Email;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
+import java.time.Duration;
+import java.util.List;
+import java.util.Map;
 
-/**
- * 인증 관련 API 컨트롤러
- */
-@Slf4j
 @RestController
 @RequestMapping("/api/auth")
 @RequiredArgsConstructor
 public class AuthController {
 
-    private final EmailVerificationService emailService;
-    private final AuthService authService;
-    private final TokenBlacklistService tokenBlacklistService;
-    private final JwtProperties jwtProperties;
+    private final AuthenticationManager authManager;
+    private final JwtUtil jwtUtil;
+    private final UserRepository userRepository; // me 응답 시 id 추출용(선택)
 
-    /**
-     * 이메일 인증 코드 요청
-     * HTTP 204 No Content 반환
-     */
-    @PostMapping("/email/request")
-    public ResponseEntity<Void> requestEmail(@Valid @RequestBody EmailRequest req) {
-        log.info("Email verification code requested for {}", req.getEmail());
-        emailService.requestVerificationCode(req.getEmail());
-        return ResponseEntity.noContent().build();
+    // ===== DTO =====
+    public record LoginRequest(
+            @Email @NotBlank String email,
+            @NotBlank @Size(min = 8, max = 72) String password
+    ) {}
+
+    public record UserSummary(Long id, String email, List<String> roles) {}
+
+    // ===== 로그인 =====
+    @PostMapping("/login")
+    public ResponseEntity<UserSummary> login(@Valid @RequestBody LoginRequest req,
+                                             HttpServletResponse res) {
+
+        Authentication auth = authManager.authenticate(
+                new UsernamePasswordAuthenticationToken(req.email(), req.password())
+        );
+
+        UserDetails principal = (UserDetails) auth.getPrincipal();
+
+        // roles from authorities → ["USER","ADMIN", ...]
+        List<String> roles = principal.getAuthorities().stream()
+                .map(a -> a.getAuthority().replaceFirst("^ROLE_", ""))
+                .toList();
+
+        String access  = jwtUtil.generateAccess(principal.getUsername(), roles);
+        String refresh = jwtUtil.generateRefresh(principal.getUsername());
+
+        // Access → 헤더
+        res.setHeader(HttpHeaders.AUTHORIZATION, "Bearer " + access);
+
+        // Refresh → HttpOnly 쿠키 (로컬 정책: SameSite=Lax, Secure=false)
+        ResponseCookie refreshCookie = ResponseCookie.from("refreshToken", refresh)
+                .httpOnly(true)
+                .secure(false)          // stage/prod 에서는 true + Domain=.jobportal.site (예시)
+                .sameSite("Lax")        // stage/prod 에서는 "None"
+                .path("/")
+                .maxAge(Duration.ofDays(7))
+                .build();
+        res.addHeader(HttpHeaders.SET_COOKIE, refreshCookie.toString());
+
+        // id는 선택: 이메일로 조회해서 넣어줌
+        Long id = userRepository.findByEmail(principal.getUsername())
+                .map(u -> u.getId())
+                .orElse(null);
+
+        return ResponseEntity.ok(new UserSummary(id, principal.getUsername(), roles));
     }
 
-    /**
-     * 이메일 인증 코드 검증
-     * HTTP 204 No Content 반환
-     */
-    @PostMapping("/email/verify")
-    public ResponseEntity<Void> verifyEmail(@Valid @RequestBody EmailVerifyRequest req) {
-        log.info("Email verification code submitted for {}", req.getEmail());
-        emailService.verifyCode(req.getEmail(), req.getCode());
-        return ResponseEntity.noContent().build();
-    }
-
-    /**
-     * 회원가입 (이메일 인증 후)
-     * HTTP 201 Created 반환, Location: /api/auth/me
-     */
-    @PostMapping("/signup")
-    public ResponseEntity<SignupResponse> signup(@Valid @RequestBody SignupRequest req) {
-        log.info("Signup attempt for {}", req.getEmail());
-        SignupResponse res = authService.register(req);
-        log.info("Signup success for id={}, email={}", res.getId(), res.getEmail());
-        return ResponseEntity
-                .created(URI.create("/api/auth/me"))
-                .body(res);
-    }
-
-    /**
-     * 로그아웃 (리프레시 토큰 블랙리스트 등록)
-     * HTTP 204 No Content 반환
-     */
-    @PostMapping("/logout")
-    public ResponseEntity<Void> logout(
-            @CookieValue(value = "refreshToken", required = false) String refreshToken
-    ) {
-        log.info("Logout requested, blacklisting refresh token");
-        if (refreshToken != null) {
-            long ttl = jwtProperties.getRefreshExpiration();
-            tokenBlacklistService.blacklist(refreshToken, ttl);
+    // ===== 내 정보(보호) =====
+    @GetMapping("/me")
+    public ResponseEntity<Map<String, Object>> me(Authentication auth) {
+        if (auth == null || !auth.isAuthenticated()) {
+            return ResponseEntity.status(401).build();
         }
+        List<String> roles = auth.getAuthorities().stream()
+                .map(a -> a.getAuthority().replaceFirst("^ROLE_", ""))
+                .toList();
+        return ResponseEntity.ok(Map.of(
+                "email", auth.getName(),
+                "roles", roles
+        ));
+    }
+
+    // ===== 로그아웃(Refresh 쿠키 삭제) =====
+    @PostMapping("/logout")
+    public ResponseEntity<Void> logout(HttpServletResponse res) {
+        ResponseCookie delete = ResponseCookie.from("refreshToken", "")
+                .httpOnly(true)
+                .secure(false)     // stage/prod: true + Domain 동일
+                .sameSite("Lax")   // stage/prod: "None"
+                .path("/")
+                .maxAge(0)
+                .build();
+        res.addHeader(HttpHeaders.SET_COOKIE, delete.toString());
         return ResponseEntity.noContent().build();
     }
 }

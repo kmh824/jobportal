@@ -2,7 +2,6 @@
 package com.jobboard.jobportal.repository;
 
 import com.jobboard.jobportal.entity.EmailVerification;
-import jdk.jfr.Timestamp;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.transaction.annotation.Transactional;
