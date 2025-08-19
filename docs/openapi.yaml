@@ -1,0 +1,94 @@
+openapi: 3.0.3
+info:
+  title: JobPortal Auth API
+  version: 1.0.0
+servers:
+  - url: http://localhost:8080
+paths:
+  /api/auth/login:
+    post:
+      summary: 로그인
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string, minLength: 8, maxLength: 72 }
+      responses:
+        '200':
+          description: 로그인 성공
+          headers:
+            Authorization:
+              schema: { type: string }
+              description: 'Bearer Access JWT'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserSummary'
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/AuthInvalid' }
+
+  /api/auth/me:
+    get:
+      summary: 내 정보
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserSummary'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /api/auth/token/refresh:
+    post:
+      summary: 토큰 재발급
+      responses:
+        '200':
+          description: 새 Access 헤더 + (선택) 회전 Refresh 쿠키
+          headers:
+            Authorization:
+              schema: { type: string }
+              description: 'Bearer NEW Access JWT'
+        '401': { $ref: '#/components/responses/RefreshInvalid' }
+        '409': { $ref: '#/components/responses/RefreshReused' }
+
+  /api/auth/logout:
+    post:
+      summary: 로그아웃 (쿠키 삭제 + 블랙리스트)
+      responses:
+        '204': { description: 성공 }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    UserSummary:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        email: { type: string, format: email }
+        roles:
+          type: array
+          items: { type: string }
+
+  responses:
+    ValidationError:
+      description: 요청 검증 실패
+    AuthInvalid:
+      description: 자격증명 실패
+    Unauthorized:
+      description: 인증 필요
+    RefreshInvalid:
+      description: 리프레시 무효/만료
+    RefreshReused:
+      description: 리프레시 재사용 감지
