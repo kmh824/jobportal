@@ -26,8 +26,11 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
         String path = request.getRequestURI();
-        // 로그인/재발급/로그아웃 등은 필터 스킵
-        return path.startsWith("/api/auth/");
+        String method = request.getMethod();
+        if (!"POST".equalsIgnoreCase(method)) return false;
+        return "/api/auth/login".equals(path)
+                || "/api/auth/logout".equals(path)
+                || "/api/auth/token/refresh".equals(path);
     }
 
     @Override
