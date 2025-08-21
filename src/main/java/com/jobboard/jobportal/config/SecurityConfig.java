@@ -2,6 +2,7 @@ package com.jobboard.jobportal.config;
 
 import com.jobboard.jobportal.security.JwtAuthenticationFilter;
 import com.jobboard.jobportal.security.JwtUtil;
+import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -19,37 +20,54 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 
 @Configuration
 @RequiredArgsConstructor
-@Profile({"prod", "stage", "test", "local"}) // 기본 로컬도 운영과 '동일 정책'으로 돌립니다.
+@Profile({"prod", "stage", "test", "local"}) // 운영/스테이지/테스트/로컬 공통 정책
 public class SecurityConfig {
 
-    // com.jobboard.jobportal.config.SecurityConfig (기존 파일 수정)
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http, JwtUtil jwtUtil) throws Exception {
         http
-                .cors(c -> {}) // WebConfig 기반
+                // CORS는 WebConfig(+프로퍼티)에서만 관리: 여기서는 활성화만
+                .cors(Customizer.withDefaults())
                 .csrf(csrf -> csrf.disable())
                 .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .formLogin(fl -> fl.disable())
                 .httpBasic(hb -> hb.disable())
+
                 .authorizeHttpRequests(auth -> auth
+                        // 프리플라이트 허용
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-                        .requestMatchers(HttpMethod.POST, "/api/auth/**").permitAll()
+                        // 인증 없이 접근 가능한 엔드포인트(POST 3개만!)
+                        .requestMatchers(HttpMethod.POST, "/api/auth/login").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/auth/logout").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/auth/token/refresh").permitAll()
+                        // 헬스체크 오픈
                         .requestMatchers("/actuator/health").permitAll()
+                        // 그 외는 인증 필요
                         .anyRequest().authenticated()
                 )
-                .addFilterBefore(new JwtAuthenticationFilter(jwtUtil),
-                        UsernamePasswordAuthenticationFilter.class);
+
+                // 미인증 → 401, 권한부족 → 403 일관화
+                .exceptionHandling(ex -> ex
+                        .authenticationEntryPoint((req, res, e) ->
+                                res.sendError(HttpServletResponse.SC_UNAUTHORIZED))
+                        .accessDeniedHandler((req, res, e) ->
+                                res.sendError(HttpServletResponse.SC_FORBIDDEN))
+                );
+
+        // ★ Jwt 필터 연결 (반드시 exceptionHandling() 바깥에서 체인 계속)
+        http.addFilterBefore(new JwtAuthenticationFilter(jwtUtil),
+                UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
     }
 
-    // 이미 있는 경우 생략
     @Bean
     public AuthenticationManager authenticationManager(AuthenticationConfiguration configuration) throws Exception {
         return configuration.getAuthenticationManager();
     }
 
     @Bean
-    public PasswordEncoder passwordEncoder() { return new BCryptPasswordEncoder(); }
-
+    public PasswordEncoder passwordEncoder() {
+        return new BCryptPasswordEncoder();
+    }
 }
