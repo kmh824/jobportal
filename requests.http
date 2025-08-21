@@ -1,0 +1,76 @@
+@baseUrl = http://localhost:8080
+@email = 1rkdalsgur1@naver.com
+@password = kmh0824!
+
+### 1) 로그인: Access는 헤더로, Refresh는 쿠키로 발급
+POST {{baseUrl}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "{{email}}",
+  "password": "{{password}}"
+}
+
+> {%
+    // 응답의 Authorization 헤더에서 Access 토큰을 뽑아 전역 변수로 저장
+    const auth = response.headers.valueOf('Authorization') || '';
+    if (auth.startsWith('Bearer ')) {
+        const access = auth.substring('Bearer '.length);
+        client.global.set('access', access);
+        client.log('Access set ✔');
+    } else {
+        client.log('Authorization header missing');
+    }
+%}
+
+### 2) 보호 API(me): Access 토큰으로 호출 (200 기대)
+GET {{baseUrl}}/api/auth/me
+Authorization: Bearer {{access}}
+
+> {%
+    client.test("me: 200 OK", () => {
+        client.assert(response.status === 200, "expected 200");
+    });
+%}
+
+### 3) 재발급(Refresh 쿠키 사용): 새 Access가 Authorization 헤더로 내려와야 함 (200 기대)
+POST {{baseUrl}}/api/auth/token/refresh
+
+> {%
+    const auth = response.headers.valueOf('Authorization') || '';
+    if (auth.startsWith('Bearer ')) {
+        client.global.set('access', auth.substring('Bearer '.length));
+        client.log('Access rotated ✔');
+    }
+    client.test("refresh: 200 OK", () => {
+        client.assert(response.status === 200 || response.status === 204, "expected 200/204");
+    });
+%}
+
+### 4) me(재발급 후): 새 Access로 다시 호출 (200 기대)
+GET {{baseUrl}}/api/auth/me
+Authorization: Bearer {{access}}
+
+> {%
+    client.test("me after refresh: 200 OK", () => {
+        client.assert(response.status === 200, "expected 200");
+    });
+%}
+
+### 5) 로그아웃: Refresh 삭제 쿠키 확인 (204 기대)
+POST {{baseUrl}}/api/auth/logout
+
+> {%
+    client.test("logout: 204 No Content", () => {
+        client.assert(response.status === 204, "expected 204");
+    });
+%}
+
+### 6) me(로그아웃 후): 토큰 없이 호출해 401이어야 정상 (401 기대)
+GET {{baseUrl}}/api/auth/me
+
+> {%
+    client.test("me without token: 401", () => {
+        client.assert(response.status === 401, "expected 401");
+    });
+%}
