@@ -1,20 +1,17 @@
-// src/main/java/com/jobboard/jobportal/config/JwtProperties.java
+// com.jobboard.jobportal.config.JwtProperties
 package com.jobboard.jobportal.config;
 
 import lombok.Getter;
 import lombok.Setter;
 import org.springframework.boot.context.properties.ConfigurationProperties;
-import org.springframework.stereotype.Component;
+import org.springframework.context.annotation.Configuration;
 
-
-@Getter
-@Setter
-@Component
-@ConfigurationProperties(prefix = "spring.jwt")
+@Getter @Setter
+@Configuration
+@ConfigurationProperties(prefix = "jwt")
 public class JwtProperties {
+    private String issuer;
     private String secret;
-    private long accessExpiration;
-    private long refreshExpiration;
-    // getters & setters
+    private long accessExpiration;   // seconds
+    private long refreshExpiration;  // seconds
 }
-
